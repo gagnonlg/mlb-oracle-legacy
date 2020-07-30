@@ -11,7 +11,6 @@
 import collections
 
 import numpy as np
-import matplotlib.pyplot as plt
 
 class ScoreBoard(object):
     def __init__(self):
@@ -262,9 +261,13 @@ def compute_prob_dist(pitcher, batter):
     prob_walk = pitcher['BB'] / pitcher['BF']
     prob_out = 1 - prob_hit - prob_walk
 
-    prob_2B = batter['2B'] / batter['H']
-    prob_3B = batter['3B'] / batter['H']
-    prob_HR = batter['HR'] / batter['H']
+    if batter['H'] > 0:
+        prob_2B = batter['2B'] / batter['H']
+        prob_3B = batter['3B'] / batter['H']
+        prob_HR = batter['HR'] / batter['H']
+    else:
+        prob_2B, prob_3B, prob_HR = 0, 0, 0
+
     prob_1B = 1 - prob_2B - prob_3B - prob_HR
 
     prob_strikeout_p = pitcher['SO'] / pitcher['BF']
@@ -343,45 +346,65 @@ ROCKIES = Team(
     ]
 )
 
-HOME = ATHLETICS
-AWAY = ROCKIES
+def most_probable_outcome(home, away, nsim=10000):
+    runs_home = np.zeros(nsim)
+    runs_away = np.zeros(nsim)
+    for n in range(nsim):
+        score = play_game(home, away)
+        runs_home[n] = score.home
+        runs_away[n] = score.away
 
-play_game_interactively(ATHLETICS, ROCKIES)
-exit()
 
-# score = play_game(ATHLETICS, ANGELS)
-# print(score.home, score.away)
+    vmax = int(np.max([np.max(runs_home), np.max(runs_away)]) + 1)
+    bins = np.arange(0, vmax)
+    p_away, _ = np.histogram(runs_away, bins=bins, density=True)
+    p_home, _ = np.histogram(runs_home, bins=bins, density=True)
 
-NSIM = 100000
+    return np.argmax(p_away), np.argmax(p_home)
 
-runs_home = np.zeros(NSIM)
-runs_away = np.zeros(NSIM)
+if '__name__' == '__main__':
+    HOME = ATHLETICS
+    AWAY = ROCKIES
 
-for n in range(NSIM):
-    if n % 1000 == 0:
-        print('{} Games remaining'.format(NSIM - n))
-    score = play_game(HOME, AWAY)
-    runs_home[n] = score.home
-    runs_away[n] = score.away
+    play_game_interactively(ATHLETICS, ROCKIES)
+    exit()
 
-vmax = int(np.max([np.max(runs_home), np.max(runs_away)]) + 1)
-bins = np.arange(0, vmax)
+    # score = play_game(ATHLETICS, ANGELS)
+    # print(score.home, score.away)
 
-(d_home, d_away), _, _ = plt.hist((runs_home, runs_away), bins=bins, label=('Home team', 'Away team'))
-p_home = d_home / np.sum(d_home)
-p_away = d_away / np.sum(d_away)
+    NSIM = 100000
 
-exp_home = 0
-for x, px in enumerate(p_home):
-    exp_home += x * px
+    runs_home = np.zeros(NSIM)
+    runs_away = np.zeros(NSIM)
 
-exp_away = 0
-for x, px in enumerate(p_away):
-    exp_away += x * px
+    for n in range(NSIM):
+        if n % 1000 == 0:
+            print('{} Games remaining'.format(NSIM - n))
+        score = play_game(HOME, AWAY)
+        runs_home[n] = score.home
+        runs_away[n] = score.away
 
-print((exp_home, exp_away))
+    vmax = int(np.max([np.max(runs_home), np.max(runs_away)]) + 1)
+    bins = np.arange(0, vmax)
 
-# plt.hist(runs_away, bins=bins, label='Away team')
-plt.legend(loc='best')
-plt.savefig('prediction_TEST.png')
-plt.show()
+    import matplotlib.pyplot as plt
+
+
+    (d_home, d_away), _, _ = plt.hist((runs_home, runs_away), bins=bins, label=('Home team', 'Away team'))
+    p_home = d_home / np.sum(d_home)
+    p_away = d_away / np.sum(d_away)
+
+    exp_home = 0
+    for x, px in enumerate(p_home):
+        exp_home += x * px
+
+    exp_away = 0
+    for x, px in enumerate(p_away):
+        exp_away += x * px
+
+    print((exp_home, exp_away))
+
+    # plt.hist(runs_away, bins=bins, label='Away team')
+    plt.legend(loc='best')
+    plt.savefig('prediction_TEST.png')
+    plt.show()
