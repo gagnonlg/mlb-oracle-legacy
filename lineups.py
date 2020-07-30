@@ -1,4 +1,6 @@
 import datetime
+import subprocess
+import tempfile
 
 import dateutil.parser
 import statsapi
@@ -12,14 +14,35 @@ import ballgame
 # d['awayBatters'][2]
 
 
-sched = statsapi.schedule(start_date='07/29/2020')
+sched = statsapi.schedule(start_date='07/30/2020')
 # print (sched[0])
 
 # dict_keys(['gamesPlayed', 'gamesStarted', 'groundOuts', 'airOuts', 'runs', 'doubles', 'triples', 'homeRuns', 'strikeOuts', 'baseOnBalls', 'intentionalWalks', 'hits', 'hitByPitch', 'avg', 'atBats', 'obp', 'slg', 'ops', 'caughtStealing', 'stolenBases', 'stolenBasePercentage', 'groundIntoDoublePlay', 'numberOfPitches', 'era', 'inningsPitched', 'wins', 'losses', 'saves', 'saveOpportunities', 'holds', 'earnedRuns', 'whip', 'battersFaced', 'gamesPitched', 'completeGames', 'shutouts', 'strikes', 'strikePercentage', 'hitBatsmen', 'balks', 'wildPitches', 'pickoffs', 'groundOutsToAirouts', 'winPercentage', 'pitchesPerInning', 'gamesFinished', 'strikeoutWalkRatio', 'strikeoutsPer9Inn', 'walksPer9Inn', 'hitsPer9Inn', 'runsScoredPer9', 'homeRunsPer9', 'inheritedRunners', 'inheritedRunnersScored', 'sacBunts', 'sacFlies'])
 
 
+def dump_lineup(team, path):
+    with open(path, 'w') as outf:
+        outf.write('{} {} {} {}\n'.format(
+            team.pitcher['H'],
+            team.pitcher['BB'],
+            team.pitcher['SO'],
+            team.pitcher['BF']
+        ))
+        for btr in team.batters:
+             outf.write('{} {} {} {} {} {} {}\n'.format(
+                 btr['AB'],
+                 btr['H'],
+                 btr['2B'],
+                 btr['3B'],
+                 btr['HR'],
+                 btr['SO'],
+                 btr['BA'],
+             ))
+
+
 def lineup(game, game_data, key):
 
+    outf = open(key + '_lineup.txt', 'w')
 
     print('  -> Starting lineup: {}'.format(game[key + '_name']))
 
@@ -35,7 +58,6 @@ def lineup(game, game_data, key):
         stats['strikeOuts'],
         stats['battersFaced']
     )
-
 
     batters = []
 
@@ -61,7 +83,16 @@ def lineup(game, game_data, key):
                     stats['strikeOuts'],
                     float('0' + stats['avg']),
                 ))
-
+                outf.write('{} {} {} {} {} {} {}\n'.format(
+                    batters[-1]['AB'],
+                    batters[-1]['H'],
+                    batters[-1]['2B'],
+                    batters[-1]['3B'],
+                    batters[-1]['HR'],
+                    batters[-1]['SO'],
+                    batters[-1]['BA'],
+                ))
+    outf.close()
     return ballgame.Team(pitcher, batters)
 
 
@@ -81,5 +112,16 @@ for game in sched:
         continue
 
     print('  -> Computing expected outcome')
-    pred = ballgame.most_probable_outcome(team_away, team_home)
-    print('{}: {}\n{}: {}'.format(game['away_name'], pred[0], game['home_name'], pred[1]))
+
+    tmp_away = tempfile.NamedTemporaryFile()
+    dump_lineup(team_away, tmp_away.name)
+    tmp_home = tempfile.NamedTemporaryFile()
+    dump_lineup(team_home, tmp_home.name)
+    try:
+        subprocess.check_call(['./ballgame', tmp_away.name, tmp_home.name])
+    finally:
+        tmp_away.close()
+        tmp_home.close()
+
+    # pred = ballgame.most_probable_outcome(team_away, team_home)
+    # print('{}: {}\n{}: {}'.format(game['away_name'], pred[0], game['home_name'], pred[1]))
