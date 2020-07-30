@@ -1,6 +1,7 @@
 #include <array>
 #include <cassert>
 #include <fstream>
+#include <future>
 #include <iostream>
 #include <random>
 #include <utility>
@@ -31,7 +32,7 @@ struct Batter {
 };
 
 
-
+int MAXSCORE = 256;
 
 class Team {
 public:
@@ -212,9 +213,109 @@ Score play_game(Team &away, Team &home)
 	return score;
 }
 
-Score most_probable_score(Team &away, Team &home)
+typedef std::vector<int> Hist;
+
+void add_inplace(Hist &to, Hist &from)
 {
- 	int nsim = 500000;
+	if (to.size() != from.size()) {
+		std::cerr << "size mismatch\n";
+		return;
+	}
+
+	for (size_t i = 0; i < to.size(); i++)
+		to[i] += from[i];
+}
+
+std::pair<Hist, Hist> worker(Team &away, Team &home, int nsim)
+{
+	int max = MAXSCORE;
+
+	std::vector<int> h_away(max + 1, 0);
+	std::vector<int> h_home(max + 1, 0);
+
+	for (int i = 0; i < nsim; i++) {
+		Score sco = play_game(away, home);
+		if (sco.away > max)
+			sco.away = max;
+		h_away[sco.away] += 1;
+		if (sco.home > max)
+			sco.home = max;
+		h_home[sco.home] += 1;
+	}
+
+	return std::make_pair(h_away, h_home);
+}
+
+Score most_probable_score_MT(Team &away, Team &home, int sims_per_thread=100000, int thread_n=2)
+{
+	std::vector<std::future<std::pair<Hist, Hist>>> pool;
+	for (int i = 0; i < thread_n; i++) {
+		pool.emplace_back(std::async(worker, std::ref(away), std::ref(home), sims_per_thread));
+	}
+
+	Hist runs_away(MAXSCORE + 1, 0);
+	Hist runs_home(MAXSCORE + 1, 0);
+	for (auto &fut : pool) {
+		auto pair = fut.get();
+		add_inplace(runs_away, pair.first);
+		add_inplace(runs_home, pair.second);
+	}
+
+	Score mp;
+
+	int max_away = -1;
+	for (size_t i = 0; i < runs_away.size(); i++) {
+		if (runs_away[i] > max_away) {
+			max_away = runs_away[i];
+			mp.away = i;
+		}
+	}
+
+	int max_home = -1;
+	for (size_t i = 0; i < runs_home.size(); i++) {
+		if (runs_home[i] > max_home) {
+			max_home = runs_home[i];
+			mp.home = i;
+		}
+	}
+
+	// let's try the home win prob
+	std::vector<double> p_away;
+	double totw = 0;
+	for (int x : runs_away)
+		totw += x;
+	for (int x : runs_away)
+		p_away.push_back(x / totw);
+	std::vector<double> p_home;
+	totw = 0;
+	for (int x : runs_home)
+		totw += x;
+	for (int x : runs_home)
+		p_home.push_back(x / totw);
+
+	std::vector<double> cdf_away;
+	totw = 0;
+	for (double x : p_away) {
+		cdf_away.push_back(totw + x);
+		totw += x;
+	}
+
+	// P(H > A) = sum_r P(A == r) * P(A < r)
+	double hwp = 0;
+	for (size_t i = 1; i < p_home.size(); i++) {
+		hwp += p_home.at(i) * cdf_away.at(i - 1);
+	}
+
+	std::cout << "HOME WIN PROBABILITY: " << hwp << std::endl;
+
+
+	return mp;
+}
+
+
+
+Score most_probable_score(Team &away, Team &home, int nsim=500000)
+{
 	int max = 100;
 
 	std::vector<int> h_away(max, 0);
@@ -237,42 +338,8 @@ Score most_probable_score(Team &away, Team &home)
 			mp.home = sco.home;
 			max_home = h_home[sco.home];
 		}
-
-
-		// std::cout << sco.away << " " << sco.home << std::endl;
 	}
 
-	// // max score
-	// int max = -1;
-	// for (int i = 0; i < nsim; i++) {
-	// 	if (runs_away[i] > max)
-	// 		max = runs_away[i];
-	// 	if (runs_home[i] > max)
-	// 		max = runs_home[i];
-	// }
-
-	// std::vector<int> h_home(max + 1, 0);
-	// std::vector<int> h_away(max + 1, 0);
-
-	// for (size_t i = 0; i < nsim; i++) {
-	// 	h_away[runs_away[i]] += 1;
-	// 	h_home[runs_home[i]] += 1;
-
-	// }
-
-	// Score mp;
-	// int max_away, max_home;
-	// max_away = max_home = -1;
-	// for (size_t i = 0; i <= max; i++) {
-	// 	if (h_away[i] > max_away) {
-	// 		max_away = h_away[i];
-	// 		mp.away = i;
-	// 	}
-	// 	if (h_home[i] > max_home) {
-	// 		max_home = h_home[i];
-	// 		mp.home = i;
-	// 	}
-	// }
 
 	return mp;
 }
@@ -289,7 +356,8 @@ int main(int argc, char *argv[])
 	Team away(argv[1]);
 	Team home(argv[2]);
 
-	Score sco = most_probable_score(away, home);
+	// Score sco = most_probable_score(away, home);
+	Score sco = most_probable_score_MT(away, home, 250000);
 
 	std::cout << sco.away << " " << sco.home << std::endl;
 

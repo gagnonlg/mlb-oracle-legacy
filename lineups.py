@@ -42,10 +42,11 @@ def dump_lineup(team, path):
 
 def lineup(game, game_data, key):
 
-    outf = open(key + '_lineup.txt', 'w')
-
     print('  -> Starting lineup: {}'.format(game[key + '_name']))
 
+    if len(game_data[key + 'Pitchers']) == 1:
+        print('Unavailable')
+        return None
     sp = game_data[key + 'Pitchers'][1]
     print('SP: {}'.format(sp['namefield']))
     spd = statsapi.player_stat_data(sp['personId'], group='pitching', type='career')
@@ -67,6 +68,7 @@ def lineup(game, game_data, key):
     btrs = game_data[key + 'Batters'][1:]
     if not btrs:
         print('Unavailable')
+        return None
     else:
         for batter in game_data[key + 'Batters'][1:]:
             if batter['namefield'][0].isdigit():
@@ -83,16 +85,6 @@ def lineup(game, game_data, key):
                     stats['strikeOuts'],
                     float('0' + stats['avg']),
                 ))
-                outf.write('{} {} {} {} {} {} {}\n'.format(
-                    batters[-1]['AB'],
-                    batters[-1]['H'],
-                    batters[-1]['2B'],
-                    batters[-1]['3B'],
-                    batters[-1]['HR'],
-                    batters[-1]['SO'],
-                    batters[-1]['BA'],
-                ))
-    outf.close()
     return ballgame.Team(pitcher, batters)
 
 
@@ -111,12 +103,19 @@ for game in sched:
         print('** WARNING: problem setting up the simulation, skipping')
         continue
 
+    if not team_away or not team_home:
+        continue
+
     print('  -> Computing expected outcome')
 
     tmp_away = tempfile.NamedTemporaryFile()
     dump_lineup(team_away, tmp_away.name)
     tmp_home = tempfile.NamedTemporaryFile()
     dump_lineup(team_home, tmp_home.name)
+
+    dump_lineup(team_away, 'away_lineup.txt')
+    dump_lineup(team_home, 'home_lineup.txt')
+
     try:
         subprocess.check_call(['./ballgame', tmp_away.name, tmp_home.name])
     finally:
