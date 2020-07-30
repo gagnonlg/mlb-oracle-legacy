@@ -206,11 +206,12 @@ def play_half_inning(offense, defense, overtime=False):
     field = Field(overtime)
     outs = 0
     while outs < 3:
-        outs += simulate_at_bat(
+        nouts, _ = simulate_at_bat(
             field,
             defense.current_pitcher(),
             offense.next_batter()
         )
+        outs += nouts
     return field.run_counter
 
 # TODO: Bayesian modeling
@@ -294,12 +295,13 @@ ATHLETICS = Team(
         batter("Matt Chapman", 1425, 366, 101, 12, 74, 386, 0.257),
         batter("Matt Olson", 1277, 325, 62, 0, 90, 367, 0.255),
         batter("Mark Canha", 1434, 357, 73, 7, 67, 369, 0.249),
-        batter("Khris Davis", 3210, 782, 154, 8, 216, 961, 0.244),
         batter("Robbie Grossman", 2197, 556, 119, 8, 42, 536, 0.253),
-        batter("Chad Pinder", 975, 239, 52, 2, 42, 282, 0.245),
-        batter(" Austin Allen", 66, 14, 4, 0, 0, 22, 0.212),
-        # batter("Sean Murphy", 54, 13, 5, 0, 4, 17, 0.241),
-        # batter("Stephen Piscotty", 2062, 545, 124, 9, 78, 474, 0.264),
+        batter("Stephen Piscotty", 2062, 545, 124, 9, 78, 474, 0.264),
+        batter("Vimael Machin", 447, 132, 27, 2, 7, 62, 0.295),
+        batter("Sean Murphy", 54, 13, 5, 0, 4, 17, 0.241),
+        # batter("Khris Davis", 3210, 782, 154, 8, 216, 961, 0.244),
+        # batter("Chad Pinder", 975, 239, 52, 2, 42, 282, 0.245),
+        # batter(" Austin Allen", 66, 14, 4, 0, 0, 22, 0.212),
     ]
 )
 
@@ -334,9 +336,10 @@ ROCKIES = Team(
         batter("Nolan Arenado", 3949, 1163, 253, 27,227, 665, 0.295),
         batter("Daniel Murphy", 5197, 1546, 369, 29, 135, 693, 0.297),
         batter("Ryan McMahon", 694, 167, 33, 2, 29, 237, 0.241),
-        batter("Raimel Tapia", 660, 180, 37, 8, 12, 159, 0.273),
         batter("Sam Hilliard", 88, 23, 5, 2, 8, 31, 0.261),
+        batter("Garrett Hampson", 343, 86, 13, 5, 8, 102, 0.251),
         batter("Tony Wolters", 986, 235, 45, 9, 7, 210, 0.238),
+        # batter("Raimel Tapia", 660, 180, 37, 8, 12, 159, 0.273),
     ]
 )
 
