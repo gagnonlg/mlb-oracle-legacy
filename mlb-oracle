@@ -1,0 +1,172 @@
+#!/bin/env python3
+
+import argparse
+import datetime
+import logging
+import subprocess
+import tempfile
+
+import statsapi
+
+import ballgame
+
+
+def prediction_line(game, hwp):
+    if hwp is None:
+        bar = '    NO PREDICTION    '
+
+    else:
+        nboxes_per_team = 10
+        awp = 1 - hwp
+        nfull_h = round(hwp * nboxes_per_team)
+        nfull_a = round(awp * nboxes_per_team)
+
+        bar = ''
+        for i in range(nboxes_per_team):
+            bar += '□' if i < (nboxes_per_team - nfull_a) else '■'
+
+        bar += '↔'
+
+        for i in range(nboxes_per_team):
+            bar += '■' if i < nfull_h else '□'
+
+    return '{:>25} {} {}'.format(game['away_name'], bar, game['home_name'])
+
+
+def dump_lineup(team, path):
+    with open(path, 'w') as outf:
+        outf.write('{} {} {} {}\n'.format(
+            team.pitcher['H'],
+            team.pitcher['BB'],
+            team.pitcher['SO'],
+            team.pitcher['BF']
+        ))
+        for btr in team.batters:
+             outf.write('{} {} {} {} {} {} {}\n'.format(
+                 btr['AB'],
+                 btr['H'],
+                 btr['2B'],
+                 btr['3B'],
+                 btr['HR'],
+                 btr['SO'],
+                 btr['BA'],
+             ))
+
+
+def predict(away, home):
+    tmp_away = tempfile.NamedTemporaryFile()
+    tmp_home = tempfile.NamedTemporaryFile()
+
+    if not (away and home):
+        # TODO gather info to debug
+        logging.debug('Technical problem!')
+        return None
+
+    dump_lineup(away, tmp_away.name)
+    dump_lineup(home, tmp_home.name)
+
+    try:
+        logging.info('Predicting...')
+        outp = subprocess.check_output(['./ballgame', tmp_away.name, tmp_home.name])
+    finally:
+        tmp_away.close()
+        tmp_home.close()
+
+    if outp:
+        logging.info('Home win probability: %f', float(outp.strip()))
+        return float(outp.strip())
+
+
+def lineup(game, game_data, key):
+    """ return None if lineup unavailable, otherwise return Team object """
+
+    if len(game_data[key + 'Pitchers']) == 1:
+        return None
+
+    sp = game_data[key + 'Pitchers'][1]
+    logging.info('Fetching pitching stats for %s', sp['namefield'])
+    spd = statsapi.player_stat_data(sp['personId'], group='pitching', type='career')
+    stats = spd['stats'][0]['stats']
+
+    pitcher = ballgame.pitcher(
+        sp['namefield'],
+        stats['hits'],
+        stats['baseOnBalls'],
+        stats['strikeOuts'],
+        stats['battersFaced']
+    )
+
+    batters = []
+
+    btrs = game_data[key + 'Batters'][1:]
+    if not btrs:
+        return None
+    else:
+        for batter in game_data[key + 'Batters'][1:]:
+            if batter['namefield'][0].isdigit():
+                logging.info('Fetching hitting stats for %s', batter['namefield'])
+                spd = statsapi.player_stat_data(batter['personId'], group='hitting', type='career')
+                stats = spd['stats'][0]['stats']
+                batters.append(ballgame.batter(
+                    batter['namefield'],
+                    stats['atBats'],
+                    stats['hits'],
+                    stats['doubles'],
+                    stats['triples'],
+                    stats['homeRuns'],
+                    stats['strikeOuts'],
+                    float('0' + stats['avg']),
+                ))
+    return ballgame.Team(pitcher, batters)
+
+
+def oracle(game):
+    logging.info('Oracle will now predict %s vs %s', game['away_name'], game['home_name'])
+
+    logging.debug('Fetching game data')
+    game_data = statsapi.boxscore_data(game['game_id'])
+    logging.debug('Result: %s', game_data is not None)
+
+    team_away = lineup(game, game_data, 'away')
+    team_home = lineup(game, game_data, 'home')
+
+    home_win_probability = predict(team_away, team_home)
+    print(prediction_line(game, home_win_probability))
+
+
+
+def configure_logging(path):
+    if path:
+        logging.basicConfig(
+            filename=path,
+            filemode='a',
+            format='[%(asctime)s %(levelname)s %(process)d/%(module)s.%(funcName)s] %(message)s',
+            level=logging.INFO
+        )
+
+
+
+def get_args():
+    args = argparse.ArgumentParser()
+    args.add_argument('--log')
+    args.add_argument('-d', '--date', default=datetime.date.today().isoformat())
+    # args.add_argument('-l', '--lineups', action='store_true')
+    return args.parse_args()
+
+
+def main():
+    args = get_args()
+    configure_logging(args.log)
+    logging.info('mlb-oracle version alpha.1')
+    date = datetime.date.fromisoformat(args.date)
+    logging.info('Predictions for %s', date.isoformat())
+
+    logging.debug('Fetching schedule')
+    sched = statsapi.schedule(start_date=date.strftime('%m/%d/%Y'))
+    logging.debug('Result: %s', sched is not None)
+
+    for game in sched:
+        oracle(game)
+
+if __name__ == '__main__':
+    main()
