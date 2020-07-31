@@ -11,9 +11,30 @@ import statsapi
 import ballgame
 
 
+def colored(wp, msg):
+    return "\033[{}m{}\033[0m".format(colormap(wp), msg)
+
+
+def bold(msg):
+    return "\033[1m{}\033[0m".format(msg)
+
+
+def colormap(winprob):
+
+    if winprob < 0.25:
+        return  37  # White
+    if 0.25 <= winprob < 0.45:
+        return 31  # Red
+    if 0.45 <= winprob < 0.55:
+        return 33  # Yellow
+    if 0.55 <= winprob < 0.75:
+        return 32  # Green
+    if 0.75 <= winprob:
+        return 36  # Cyan
+
 def prediction_line(game, hwp):
     if hwp is None:
-        bar = '    NO PREDICTION    '
+        bar = bold('    NO PREDICTION    ')
 
     else:
         nboxes_per_team = 10
@@ -22,13 +43,21 @@ def prediction_line(game, hwp):
         nfull_a = round(awp * nboxes_per_team)
 
         bar = ''
-        for i in range(nboxes_per_team):
-            bar += '□' if i < (nboxes_per_team - nfull_a) else '■'
+        for i in range(nboxes_per_team - nfull_a):
+            bar += '□'
+        subbar = ''
+        for i in range(nfull_a):
+            subbar += '■'
+        bar += colored(awp, subbar)
 
         bar += '↔'
 
-        for i in range(nboxes_per_team):
-            bar += '■' if i < nfull_h else '□'
+        subbar = ''
+        for i in range(nfull_h):
+            subbar += '■'
+        bar += colored(hwp, subbar)
+        for i in range(nboxes_per_team - nfull_h):
+            bar += '□'
 
     return '{:>25} {} {}'.format(game['away_name'], bar, game['home_name'])
 
