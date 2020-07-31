@@ -246,7 +246,8 @@ std::pair<Hist, Hist> worker(Team &away, Team &home, int nsim)
 	return std::make_pair(h_away, h_home);
 }
 
-Score most_probable_score_MT(Team &away, Team &home, int sims_per_thread=100000, int thread_n=2)
+// Score most_probable_score_MT(Team &away, Team &home, int sims_per_thread=100000, int thread_n=2)
+double compute_home_win_probability(Team &away, Team &home, int sims_per_thread=100000, int thread_n=2)
 {
 	std::vector<std::future<std::pair<Hist, Hist>>> pool;
 	for (int i = 0; i < thread_n; i++) {
@@ -259,24 +260,6 @@ Score most_probable_score_MT(Team &away, Team &home, int sims_per_thread=100000,
 		auto pair = fut.get();
 		add_inplace(runs_away, pair.first);
 		add_inplace(runs_home, pair.second);
-	}
-
-	Score mp;
-
-	int max_away = -1;
-	for (size_t i = 0; i < runs_away.size(); i++) {
-		if (runs_away[i] > max_away) {
-			max_away = runs_away[i];
-			mp.away = i;
-		}
-	}
-
-	int max_home = -1;
-	for (size_t i = 0; i < runs_home.size(); i++) {
-		if (runs_home[i] > max_home) {
-			max_home = runs_home[i];
-			mp.home = i;
-		}
 	}
 
 	// let's try the home win prob
@@ -306,10 +289,7 @@ Score most_probable_score_MT(Team &away, Team &home, int sims_per_thread=100000,
 		hwp += p_home.at(i) * cdf_away.at(i - 1);
 	}
 
-	std::cout << "HOME WIN PROBABILITY: " << hwp << std::endl;
-
-
-	return mp;
+	return hwp;
 }
 
 
@@ -357,9 +337,9 @@ int main(int argc, char *argv[])
 	Team home(argv[2]);
 
 	// Score sco = most_probable_score(away, home);
-	Score sco = most_probable_score_MT(away, home, 250000);
-
-	std::cout << sco.away << " " << sco.home << std::endl;
+	// Score sco = most_probable_score_MT(away, home, 250000);
+	double hwp = compute_home_win_probability(away, home, 250000);
+	std::cout << hwp << std::endl;
 
 	return 0;
 }

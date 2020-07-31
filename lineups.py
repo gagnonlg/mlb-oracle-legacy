@@ -14,7 +14,7 @@ import ballgame
 # d['awayBatters'][2]
 
 
-sched = statsapi.schedule(start_date='07/30/2020')
+sched = statsapi.schedule(start_date='07/31/2020')
 # print (sched[0])
 
 # dict_keys(['gamesPlayed', 'gamesStarted', 'groundOuts', 'airOuts', 'runs', 'doubles', 'triples', 'homeRuns', 'strikeOuts', 'baseOnBalls', 'intentionalWalks', 'hits', 'hitByPitch', 'avg', 'atBats', 'obp', 'slg', 'ops', 'caughtStealing', 'stolenBases', 'stolenBasePercentage', 'groundIntoDoublePlay', 'numberOfPitches', 'era', 'inningsPitched', 'wins', 'losses', 'saves', 'saveOpportunities', 'holds', 'earnedRuns', 'whip', 'battersFaced', 'gamesPitched', 'completeGames', 'shutouts', 'strikes', 'strikePercentage', 'hitBatsmen', 'balks', 'wildPitches', 'pickoffs', 'groundOutsToAirouts', 'winPercentage', 'pitchesPerInning', 'gamesFinished', 'strikeoutWalkRatio', 'strikeoutsPer9Inn', 'walksPer9Inn', 'hitsPer9Inn', 'runsScoredPer9', 'homeRunsPer9', 'inheritedRunners', 'inheritedRunnersScored', 'sacBunts', 'sacFlies'])
@@ -42,13 +42,13 @@ def dump_lineup(team, path):
 
 def lineup(game, game_data, key):
 
-    print('  -> Starting lineup: {}'.format(game[key + '_name']))
+    # print('  -> Starting lineup: {}'.format(game[key + '_name']))
 
     if len(game_data[key + 'Pitchers']) == 1:
-        print('Unavailable')
+        # print('Unavailable')
         return None
     sp = game_data[key + 'Pitchers'][1]
-    print('SP: {}'.format(sp['namefield']))
+    # print('SP: {}'.format(sp['namefield']))
     spd = statsapi.player_stat_data(sp['personId'], group='pitching', type='career')
     stats = spd['stats'][0]['stats']
 
@@ -67,12 +67,12 @@ def lineup(game, game_data, key):
 
     btrs = game_data[key + 'Batters'][1:]
     if not btrs:
-        print('Unavailable')
+        # print('Unavailable')
         return None
     else:
         for batter in game_data[key + 'Batters'][1:]:
             if batter['namefield'][0].isdigit():
-                print(batter['namefield'])
+                # print(batter['namefield'])
                 spd = statsapi.player_stat_data(batter['personId'], group='hitting', type='career')
                 stats = spd['stats'][0]['stats']
                 batters.append(ballgame.batter(
@@ -88,39 +88,81 @@ def lineup(game, game_data, key):
     return ballgame.Team(pitcher, batters)
 
 
-for game in sched:
-    game_data = statsapi.boxscore_data(game['game_id'])
-    print('==> {} {} vs {}'.format(
-        dateutil.parser.isoparse(game['game_datetime']),
-        game['away_name'],
-        game['home_name'],
-    ))
-
-    try:
-        team_away = lineup(game, game_data, 'away')
-        team_home = lineup(game, game_data, 'home')
-    except KeyError:
-        print('** WARNING: problem setting up the simulation, skipping')
-        continue
-
-    if not team_away or not team_home:
-        continue
-
-    print('  -> Computing expected outcome')
-
+def estimate_home_win_probability(away, home):
     tmp_away = tempfile.NamedTemporaryFile()
-    dump_lineup(team_away, tmp_away.name)
+    dump_lineup(away, tmp_away.name)
     tmp_home = tempfile.NamedTemporaryFile()
-    dump_lineup(team_home, tmp_home.name)
+    dump_lineup(home, tmp_home.name)
 
-    dump_lineup(team_away, 'away_lineup.txt')
-    dump_lineup(team_home, 'home_lineup.txt')
+    # dump_lineup(team_away, 'away_lineup.txt')
+    # dump_lineup(team_home, 'home_lineup.txt')
+
+    outp = None
 
     try:
-        subprocess.check_call(['./ballgame', tmp_away.name, tmp_home.name])
+        outp = subprocess.check_output(['./ballgame', tmp_away.name, tmp_home.name])
     finally:
         tmp_away.close()
         tmp_home.close()
 
-    # pred = ballgame.most_probable_outcome(team_away, team_home)
-    # print('{}: {}\n{}: {}'.format(game['away_name'], pred[0], game['home_name'], pred[1]))
+    if outp:
+        return float(outp.strip())
+
+    return None
+
+
+def run_game(game):
+    game_data = statsapi.boxscore_data(game['game_id'])
+
+    team_away = lineup(game, game_data, 'away')
+    team_home = lineup(game, game_data, 'home')
+
+    hwp = 0
+    awp = 0
+    if team_away and team_home:
+        hwp = estimate_home_win_probability(team_away, team_home)
+        awp = 1 - hwp
+
+    nboxes_per_team = 10
+    nfull_h = round(hwp * nboxes_per_team)
+    nfull_a = round(awp * nboxes_per_team)
+
+    # away segment
+    bar = ''
+    for i in range(nboxes_per_team):
+        bar += '□' if i < (nboxes_per_team - nfull_a) else '■'
+    bar += '↔'
+    for i in range(nboxes_per_team):
+        bar += '■' if i < nfull_h else '□'
+
+    print('{:>25} {} {}'.format(game['away_name'], bar, game['home_name']))
+
+
+if __name__ == '__main__':
+    for game in sched:
+        run_game(game)
+
+# for game in sched:
+#     game_data = statsapi.boxscore_data(game['game_id'])
+#     print('==> {} {} vs {}'.format(
+#         dateutil.parser.isoparse(game['game_datetime']),
+#         game['away_name'],
+#         game['home_name'],
+#     ))
+
+#     try:
+#         team_away = lineup(game, game_data, 'away')
+#         team_home = lineup(game, game_data, 'home')
+#     except KeyError:
+#         print('** WARNING: problem setting up the simulation, skipping')
+#         continue
+
+#     if not team_away or not team_home:
+#         continue
+
+#     print('  -> Computing expected outcome')
+#     hwp = estimate_home_win_probability(team_away, team_home)
+
+
+#     # pred = ballgame.most_probable_outcome(team_away, team_home)
+#     # print('{}: {}\n{}: {}'.format(game['away_name'], pred[0], game['home_name'], pred[1]))
