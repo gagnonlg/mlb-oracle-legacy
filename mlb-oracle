@@ -1,6 +1,20 @@
 #!/bin/env python3
 """ Predict the MLB scores of the day """
 
+"""Towards 1.0
+
+* Print team names at once with 'PREDICTING...'
+  and then replace with result.
+
+* Highlight the favored team
+
+* More information on error, i.e. not just 'no prediction'
+
+* Implement mode that also tells you the lineups
+
+"""
+
+
 import argparse
 import datetime
 import logging

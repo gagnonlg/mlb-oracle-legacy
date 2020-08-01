@@ -1,0 +1,26 @@
+* Towards 1.0
+** TODO Consolidate architecture
+   + Frontend / Backend separation
+   + The backend's job is to run prediction kernels and interpret the
+     results to make a prediction
+   + Each simulation/prediction model has its own kernel, essentially
+     a function which takes two Team objects and returns the
+     unormalized probability over runs.
+   + A standard backend library takes care of multi-threading and
+     interpretation of results, and returns a prediction to the
+     frontend. The "prediction" can actually be an error as well.
+   + The frontend print/updates the information
+
+   + The frontend is the driver. It creates all the Team objects
+     required. After all, it is its job to show us this information
+     (name and lineup) first and foremost. The predicition service is
+     all the backend runs. The frontend makes asynchronous calls to
+     the backend with pairs of Team objects. The backend returns a
+     result which is interpreted and displayed by the frontend.
+
+   + Information on the frontend lines should be more complete but
+     still minimal, error messages in particular. Maybe just simple
+     indicators like (Error, Missing {A,H} lineup{s}, PPD, RAIN,
+   + If Error, additional line at the end like "run with -vvv"?
+     + Think about logging some more
+
