@@ -72,6 +72,7 @@ def prediction_line(game, hwp):
     return '{:>25} {} {}'.format(game['away_name'], line, game['home_name'])
 
 
+# TODO move to ballgame.py
 def dump_lineup(team, path):
     """ Save lineup of `team' to `path' in format understood by ballgame.cxx """
     with open(path, 'w') as outf:
@@ -108,21 +109,13 @@ def predict(away, home):
 
     try:
         logging.info('Predicting...')
-        # TODO better handling of code path
-        outp = subprocess.check_output(
-            ['./ballgame', tmp_away.name, tmp_home.name]
-        )
+        hwp = ballgame.run_simulations(tmp_away.name, tmp_home.name)
     finally:
         tmp_away.close()
         tmp_home.close()
 
-    if outp:
-        logging.info('Home win probability: %f', float(outp.strip()))
-        return float(outp.strip())
-
-    return None
-
-
+    logging.info('Home win probability: %f', hwp)
+    return hwp
 def lineup(game_data, key):
     """ return None if lineup unavailable, otherwise return Team object """
 

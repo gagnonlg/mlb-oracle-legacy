@@ -7,6 +7,7 @@
 #include <utility>
 #include <vector>
 
+
 std::default_random_engine GLOBAL_RNG;
 
 struct Score {
@@ -325,22 +326,34 @@ Score most_probable_score(Team &away, Team &home, int nsim=500000)
 	return mp;
 }
 
-int main(int argc, char *argv[])
+// int main(int argc, char *argv[])
+// {
+// 	std::random_device rd;
+// 	GLOBAL_RNG.seed(rd());
+// 	if (argc != 3) {
+// 		std::cerr << "Usage: " << argv[0] << " away-path home-path\n";
+// 		return 1;
+// 	}
+
+// 	Team away(argv[1]);
+// 	Team home(argv[2]);
+
+// 	// Score sco = most_probable_score(away, home);
+// 	// Score sco = most_probable_score_MT(away, home, 250000);
+// 	double hwp = compute_home_win_probability(away, home, 250000);
+// 	std::cout << hwp << std::endl;
+
+// 	return 0;
+// }
+
+extern "C" {
+double run_simulations(const char *away_path, const char *home_path,
+		       int sims_per_thread, int thread_n)
 {
-	std::random_device rd;
-	GLOBAL_RNG.seed(rd());
-	if (argc != 3) {
-		std::cerr << "Usage: " << argv[0] << " away-path home-path\n";
-		return 1;
-	}
-
-	Team away(argv[1]);
-	Team home(argv[2]);
-
-	// Score sco = most_probable_score(away, home);
-	// Score sco = most_probable_score_MT(away, home, 250000);
-	double hwp = compute_home_win_probability(away, home, 250000);
-	std::cout << hwp << std::endl;
-
-	return 0;
+	Team away(away_path);
+	Team home(home_path);
+	double hwp = compute_home_win_probability(away, home, sims_per_thread, thread_n);
+	return hwp;
 }
+}
+
