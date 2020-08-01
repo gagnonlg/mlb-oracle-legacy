@@ -226,6 +226,7 @@ void add_inplace(Hist &to, Hist &from)
 		to[i] += from[i];
 }
 
+// TODO gotta use a 2d hist
 std::pair<Hist, Hist> worker(Team &away, Team &home, int nsim)
 {
 	int max = MAXSCORE;
@@ -283,7 +284,7 @@ double compute_home_win_probability(Team &away, Team &home, int sims_per_thread=
 		totw += x;
 	}
 
-	// P(H > A) = sum_r P(A == r) * P(A < r)
+	// P(H > A) = sum_r P(H == r) * P(A < r)
 	double hwp = 0;
 	for (size_t i = 1; i < p_home.size(); i++) {
 		hwp += p_home.at(i) * cdf_away.at(i - 1);

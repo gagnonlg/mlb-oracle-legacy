@@ -1,4 +1,5 @@
 #!/bin/env python3
+""" Predict the MLB scores of the day """
 
 import argparse
 import datetime
@@ -11,30 +12,36 @@ import statsapi
 import ballgame
 
 
-def colored(wp, msg):
-    return "\033[{}m{}\033[0m".format(colormap(wp), msg)
+def colored(winp, msg):
+    """ Color `msg' in ttys according to win probability """
+    code = colormap(winp)
+    return "\033[{}m{}\033[0m".format(code, msg) if code else msg
 
 
 def bold(msg):
+    """ Bold `msg' in ttys according to win probability """
     return "\033[1m{}\033[0m".format(msg)
 
 
 def colormap(winprob):
-
+    """ Mapping fron win probability to tty color code """
     if winprob < 0.25:
-        return  37  # White
+        return 37  # White
     if 0.25 <= winprob < 0.45:
         return 31  # Red
     if 0.45 <= winprob < 0.55:
         return 33  # Yellow
     if 0.55 <= winprob < 0.75:
         return 32  # Green
-    if 0.75 <= winprob:
+    if 0.75 <= winprob:  # pylint: disable=misplaced-comparison-constant
         return 36  # Cyan
+    return None
+
 
 def prediction_line(game, hwp):
+    """ Format the prediction message for the game """
     if hwp is None:
-        bar = bold('    NO PREDICTION    ')
+        line = bold('    NO PREDICTION    ')
 
     else:
         nboxes_per_team = 10
@@ -42,27 +49,31 @@ def prediction_line(game, hwp):
         nfull_h = round(hwp * nboxes_per_team)
         nfull_a = round(awp * nboxes_per_team)
 
-        bar = ''
-        for i in range(nboxes_per_team - nfull_a):
-            bar += '□'
-        subbar = ''
-        for i in range(nfull_a):
-            subbar += '■'
-        bar += colored(awp, subbar)
+        # Away
+        line = ''
+        for _ in range(nboxes_per_team - nfull_a):
+            line += '□'
+        subline = ''
+        for _ in range(nfull_a):
+            subline += '■'
+        line += colored(awp, subline)
 
-        bar += '↔'
+        # Separator
+        line += ' '
 
-        subbar = ''
-        for i in range(nfull_h):
-            subbar += '■'
-        bar += colored(hwp, subbar)
-        for i in range(nboxes_per_team - nfull_h):
-            bar += '□'
+        # Home
+        subline = ''
+        for _ in range(nfull_h):
+            subline += '■'
+        line += colored(hwp, subline)
+        for _ in range(nboxes_per_team - nfull_h):
+            line += '□'
 
-    return '{:>25} {} {}'.format(game['away_name'], bar, game['home_name'])
+    return '{:>25} {} {}'.format(game['away_name'], line, game['home_name'])
 
 
 def dump_lineup(team, path):
+    """ Save lineup of `team' to `path' in format understood by ballgame.cxx """
     with open(path, 'w') as outf:
         outf.write('{} {} {} {}\n'.format(
             team.pitcher['H'],
@@ -71,18 +82,19 @@ def dump_lineup(team, path):
             team.pitcher['BF']
         ))
         for btr in team.batters:
-             outf.write('{} {} {} {} {} {} {}\n'.format(
-                 btr['AB'],
-                 btr['H'],
-                 btr['2B'],
-                 btr['3B'],
-                 btr['HR'],
-                 btr['SO'],
-                 btr['BA'],
-             ))
+            outf.write('{} {} {} {} {} {} {}\n'.format(
+                btr['AB'],
+                btr['H'],
+                btr['2B'],
+                btr['3B'],
+                btr['HR'],
+                btr['SO'],
+                btr['BA'],
+            ))
 
 
 def predict(away, home):
+    """ Run the ballgame.cxx prediction code """
     tmp_away = tempfile.NamedTemporaryFile()
     tmp_home = tempfile.NamedTemporaryFile()
 
@@ -96,7 +108,10 @@ def predict(away, home):
 
     try:
         logging.info('Predicting...')
-        outp = subprocess.check_output(['./ballgame', tmp_away.name, tmp_home.name])
+        # TODO better handling of code path
+        outp = subprocess.check_output(
+            ['./ballgame', tmp_away.name, tmp_home.name]
+        )
     finally:
         tmp_away.close()
         tmp_home.close()
@@ -105,20 +120,29 @@ def predict(away, home):
         logging.info('Home win probability: %f', float(outp.strip()))
         return float(outp.strip())
 
+    return None
 
-def lineup(game, game_data, key):
+
+def lineup(game_data, key):
     """ return None if lineup unavailable, otherwise return Team object """
 
     if len(game_data[key + 'Pitchers']) == 1:
         return None
 
-    sp = game_data[key + 'Pitchers'][1]
-    logging.info('Fetching pitching stats for %s', sp['namefield'])
-    spd = statsapi.player_stat_data(sp['personId'], group='pitching', type='career')
-    stats = spd['stats'][0]['stats']
+    startp = game_data[key + 'Pitchers'][1]
+    logging.info('Fetching pitching stats for %s', startp['namefield'])
+    try:
+        startpd = statsapi.player_stat_data(
+            startp['personId'],
+            group='pitching',
+            type='career'
+        )
+    except KeyError:
+        return None
+    stats = startpd['stats'][0]['stats']
 
     pitcher = ballgame.pitcher(
-        sp['namefield'],
+        startp['namefield'],
         stats['hits'],
         stats['baseOnBalls'],
         stats['strikeOuts'],
@@ -130,41 +154,55 @@ def lineup(game, game_data, key):
     btrs = game_data[key + 'Batters'][1:]
     if not btrs:
         return None
-    else:
-        for batter in game_data[key + 'Batters'][1:]:
-            if batter['namefield'][0].isdigit():
-                logging.info('Fetching hitting stats for %s', batter['namefield'])
-                spd = statsapi.player_stat_data(batter['personId'], group='hitting', type='career')
-                stats = spd['stats'][0]['stats']
-                batters.append(ballgame.batter(
-                    batter['namefield'],
-                    stats['atBats'],
-                    stats['hits'],
-                    stats['doubles'],
-                    stats['triples'],
-                    stats['homeRuns'],
-                    stats['strikeOuts'],
-                    float('0' + stats['avg']),
-                ))
+
+    for batter in game_data[key + 'Batters'][1:]:
+        if batter['namefield'][0].isdigit():
+            logging.info(
+                'Fetching hitting stats for %s',
+                batter['namefield']
+            )
+            try:
+                btrd = statsapi.player_stat_data(
+                    batter['personId'],
+                    group='hitting',
+                    type='career'
+                )
+            except KeyError:
+                return None
+            stats = btrd['stats'][0]['stats']
+            batters.append(ballgame.batter(
+                batter['namefield'],
+                stats['atBats'],
+                stats['hits'],
+                stats['doubles'],
+                stats['triples'],
+                stats['homeRuns'],
+                stats['strikeOuts'],
+                float('0' + stats['avg']),
+            ))
     return ballgame.Team(pitcher, batters)
 
 
 def oracle(game):
-    logging.info('Oracle will now predict %s vs %s', game['away_name'], game['home_name'])
+    """ Predict outcome of `game' """
+    logging.info(
+        'Oracle will now predict %s vs %s',
+        game['away_name'],
+        game['home_name']
+    )
 
     logging.debug('Fetching game data')
     game_data = statsapi.boxscore_data(game['game_id'])
     logging.debug('Result: %s', game_data is not None)
 
-    team_away = lineup(game, game_data, 'away')
-    team_home = lineup(game, game_data, 'home')
+    team_away = lineup(game_data, 'away')
+    team_home = lineup(game_data, 'home')
 
     home_win_probability = predict(team_away, team_home)
     print(prediction_line(game, home_win_probability))
 
 
-
-def configure_logging(path):
+def _configure_logging(path):
     if path:
         logging.basicConfig(
             filename=path,
@@ -174,8 +212,7 @@ def configure_logging(path):
         )
 
 
-
-def get_args():
+def _get_args():
     args = argparse.ArgumentParser()
     args.add_argument('--log')
     args.add_argument('-d', '--date', default=datetime.date.today().isoformat())
@@ -183,9 +220,9 @@ def get_args():
     return args.parse_args()
 
 
-def main():
-    args = get_args()
-    configure_logging(args.log)
+def _main():
+    args = _get_args()
+    _configure_logging(args.log)
     logging.info('mlb-oracle version alpha.1')
     date = datetime.date.fromisoformat(args.date)
     logging.info('Predictions for %s', date.isoformat())
@@ -198,4 +235,4 @@ def main():
         oracle(game)
 
 if __name__ == '__main__':
-    main()
+    _main()
