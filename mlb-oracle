@@ -28,90 +28,134 @@ import statsapi
 import ballgame
 
 
-def colored_msg(code, msg):
-    """ Color `msg' in ttys according to win probability """
-    return "\033[{}m{}\033[0m".format(code, msg) if code else msg
+TTYColor = {
+    'red': 31,
+    'green': 32,
+    'yellow': 33,
+    'blue': 34,
+    'cyan': 36,
+    'white': 37,
+}
 
-def colored(winp, msg):
-    """ Color `msg' in ttys according to win probability """
-    code = colormap(winp)
+
+def colored_msg(code, msg):
     return "\033[{}m{}\033[0m".format(code, msg) if code else msg
 
 
 def bold(msg):
-    """ Bold `msg' in ttys according to win probability """
     return "\033[1m{}\033[0m".format(msg)
 
-
-WHITE = 37
-RED = 31
-YELLOW = 33
-GREEN = 32
-CYAN = 36
-BLUE = 34
 
 def colormap(winprob):
     """ Mapping fron win probability to tty color code """
     if winprob < 0.25:
-        return WHITE
+        return TTYColor['white']
     if 0.25 <= winprob < 0.45:
-        return RED
+        return TTYColor['red']
     if 0.45 <= winprob < 0.55:
-        return YELLOW
+        return TTYColor['yellow']
     if 0.55 <= winprob < 0.75:
-        return GREEN
+        return TTYColor['green']
     if 0.75 <= winprob:  # pylint: disable=misplaced-comparison-constant
-        return CYAN
+        return TTYColor['cyan']
     return None
 
 
-def predicting_line(game):
-    line = bold('{:^21}'.format('PREDICTING...'))
-    return '{:>25} {} {}'.format(game['away_name'], line, game['home_name'])
+class GameLine(object):
+    def __init__(self, game):
+        self.game = game
+        self.status = ""
+        pass
+
+    def postponed(self):
+        self.status = 'POSTPONED'
+        self.color = TTYColor['blue']
+
+    def fetching(self):
+        self.status = 'FETCHING DATA...'
+        self.color = TTYColor['white']
+
+    def predicting(self):
+        self.status = 'PREDICTING...'
+        self.color = TTYColor['white']
+
+    def prediction(self, home_win_probability):
+        if home_win_probability is None:
+            self.status = 'NO PREDICTION'
+            self.color = TTYColor['red']
+
+        else:
+            nboxes_per_team = 10
+            awp = 1 - home_win_probability
+            nfull_h = round(home_win_probability * nboxes_per_team)
+            nfull_a = round(awp * nboxes_per_team)
+
+            # Away
+            line = ''
+            for _ in range(nboxes_per_team - nfull_a):
+                line += '□'
+            subline = ''
+            for _ in range(nfull_a):
+                subline += '■'
+            line += colored_msg(colormap(awp), subline)
+
+            # Separator
+            line += ' '
+
+            # Home
+            subline = ''
+            for _ in range(nfull_h):
+                subline += '■'
+            line += colored_msg(colormap(home_win_probability), subline)
+            for _ in range(nboxes_per_team - nfull_h):
+                line += '□'
+
+            self.color = None
+            self.status = line
+
+    def frontend_error(self):
+        self.status = 'FRONTEND ERROR'
+        self.color = TTYColor['red']
+
+    def backend_error(self):
+        self.status = 'BACKEND ERROR'
+        self.color = TTYColor['red']
+
+    def missing_lineups(self):
+        self.status = 'MISSING LINEUPS'
+        self.color = TTYColor['yellow']
+
+    def missing_lineup_away(self):
+        self.status = 'MISSING LINEUP A'
+        self.color = TTYColor['yellow']
+
+    def missing_lineup_home(self):
+        self.status = 'MISSING LINEUP H'
+        self.color = TTYColor['yellow']
+
+    def final(self):
+        self.update()
+        print('')
 
 
-def postponed_line(game):
-    # line = colored_msg(BLUE, bold('    POSTPONED        '))
-    line = colored_msg(BLUE, bold('{:^21}'.format('POSTPONED')))
-    return '{:>25} {} {}'.format(game['away_name'], line, game['home_name'])
+    def update(self):
+        # Clears tty line and puts cursor at beginning
+        print("\033[2K\r", end='')
 
+        if self.color is None:
+            status = self.status
+        else:
+            status = colored_msg(self.color, bold('{:^21}'.format(self.status)))
 
-def clear_line():
-    print("\033[2K\r", end='')
+        line = '{:>25} {} {}'.format(
+            self.game['away_name'],
+            status,
+            self.game['home_name']
+        )
 
+        print(line, end='')
 
-def prediction_line(game, hwp):
-    """ Format the prediction message for the game """
-    if hwp is None:
-        line = bold('    NO PREDICTION    ')
-
-    else:
-        nboxes_per_team = 10
-        awp = 1 - hwp
-        nfull_h = round(hwp * nboxes_per_team)
-        nfull_a = round(awp * nboxes_per_team)
-
-        # Away
-        line = ''
-        for _ in range(nboxes_per_team - nfull_a):
-            line += '□'
-        subline = ''
-        for _ in range(nfull_a):
-            subline += '■'
-        line += colored(awp, subline)
-
-        # Separator
-        line += ' '
-
-        # Home
-        subline = ''
-        for _ in range(nfull_h):
-            subline += '■'
-        line += colored(hwp, subline)
-        for _ in range(nboxes_per_team - nfull_h):
-            line += '□'
-
-    return '{:>25} {} {}'.format(game['away_name'], line, game['home_name'])
+        sys.stdout.flush()
 
 
 # TODO move to ballgame.py
@@ -150,13 +194,11 @@ def predict(away, home):
     dump_lineup(home, tmp_home.name)
 
     try:
-        logging.info('Predicting...')
         hwp = ballgame.run_simulations(tmp_away.name, tmp_home.name)
     finally:
         tmp_away.close()
         tmp_home.close()
 
-    logging.info('Home win probability: %f', hwp)
     return hwp
 
 
@@ -167,7 +209,6 @@ def lineup(game_data, key):
         return None
 
     startp = game_data[key + 'Pitchers'][1]
-    logging.info('Fetching pitching stats for %s', startp['namefield'])
     startpd = statsapi.player_stat_data(
         startp['personId'],
         group='pitching',
@@ -191,10 +232,6 @@ def lineup(game_data, key):
 
     for batter in game_data[key + 'Batters'][1:]:
         if batter['namefield'][0].isdigit():
-            logging.info(
-                'Fetching hitting stats for %s',
-                batter['namefield']
-            )
             try:
                 btrd = statsapi.player_stat_data(
                     batter['personId'],
@@ -219,61 +256,57 @@ def lineup(game_data, key):
 
 def oracle(game):
     """ Predict outcome of `game' """
-    logging.info(
-        'Oracle will now predict %s vs %s',
-        game['away_name'],
-        game['home_name']
-    )
-    # print(game['status']) # 'Final'
+
+    gline = GameLine(game)
+
     if game['status'] == 'Postponed':
-        print(postponed_line(game))
+        gline.postponed()
+        gline.final()
         return True
 
-    logging.debug('Fetching game data')
-    line = colored_msg(WHITE, bold('{:^21}'.format('FETCHING DATA...')))
-    print('\r{:>25} {} {}'.format(game['away_name'], line, game['home_name']), end='')
-    game_data = statsapi.boxscore_data(game['game_id'])
-    logging.debug('Result: %s', game_data is not None)
+    gline.fetching()
+    gline.update()
 
+    game_data = statsapi.boxscore_data(game['game_id'])
     team_away = team_home = None
     try:
         team_away = lineup(game_data, 'away')
         team_home = lineup(game_data, 'home')
     except:
         logging.exception('Error encountered while fetching lineups')
-        line = colored_msg(RED, bold('   FRONTEND ERROR    '))
-        print('\r{:>25} {} {}'.format(game['away_name'], line, game['home_name']))
+        gline.frontend_error()
+        gline.final()
         return
 
     if (not team_away) and (not team_home):
-        line = colored_msg(YELLOW, bold('{:^21}'.format('MISSING LINEUPS')))
-        print('\r{:>25} {} {}'.format(game['away_name'], line, game['home_name']))
+        gline.missing_lineups()
+        gline.final()
         return True
 
     if not team_away:
-        line = colored_msg(YELLOW, bold('{:^21}'.format('MISSING LINEUP A')))
-        print('\r{:>25} {} {}'.format(game['away_name'], line, game['home_name']))
+        gline.missing_lineup_away()
+        gline.final()
         return True
 
     if not team_home:
-        line = colored_msg(YELLOW,bold('{:^21}'.format('MISSING LINEUP H')))
-        print('\r{:>25} {} {}'.format(game['away_name'], line, game['home_name']))
+        gline.missing_lineup_home()
+        gline.final()
         return True
 
-    print('\r' + predicting_line(game), end='')
-    sys.stdout.flush()
-
+    gline.predicting()
+    gline.update()
     try:
         home_win_probability = predict(team_away, team_home)
     except:
-        # clear_line()
-        logging.exception('backend error')
-        line =  colored_msg(RED, bold('{:^21}'.format('BACKEND ERROR')))
-        print('\r{:>25} {} {}'.format(game['away_name'], line, game['home_name']))
+        logging.exception('Error encountered in backend')
+        gline.backend_error()
+        gline.final()
         return
 
-    # clear_line()
-    print('\r' + prediction_line(game, home_win_probability))
+    gline.prediction(home_win_probability)
+    gline.final()
+
+
     return True
 
 
