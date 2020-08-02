@@ -63,13 +63,15 @@ def colormap(winprob):
         return CYAN
     return None
 
+
 def predicting_line(game):
-    line = bold('    PREDICTING...    ')
+    line = bold('{:^21}'.format('PREDICTING...'))
     return '{:>25} {} {}'.format(game['away_name'], line, game['home_name'])
 
 
 def postponed_line(game):
-    line = colored_msg(BLUE, bold('    POSTPONED        '))
+    # line = colored_msg(BLUE, bold('    POSTPONED        '))
+    line = colored_msg(BLUE, bold('{:^21}'.format('POSTPONED')))
     return '{:>25} {} {}'.format(game['away_name'], line, game['home_name'])
 
 
@@ -227,7 +229,7 @@ def oracle(game):
         return True
 
     logging.debug('Fetching game data')
-    line = colored_msg(WHITE, bold('  FETCHING DATA...   '))
+    line = colored_msg(WHITE, bold('{:^21}'.format('FETCHING DATA...')))
     print('\r{:>25} {} {}'.format(game['away_name'], line, game['home_name']), end='')
     game_data = statsapi.boxscore_data(game['game_id'])
     logging.debug('Result: %s', game_data is not None)
@@ -243,17 +245,17 @@ def oracle(game):
         return
 
     if (not team_away) and (not team_home):
-        line = colored_msg(YELLOW, bold('   MISSING LINEUPS   '))
+        line = colored_msg(YELLOW, bold('{:^21}'.format('MISSING LINEUPS')))
         print('\r{:>25} {} {}'.format(game['away_name'], line, game['home_name']))
         return True
 
     if not team_away:
-        line = colored_msg(YELLOW, bold('   MISSING LINEUP A  '))
+        line = colored_msg(YELLOW, bold('{:^21}'.format('MISSING LINEUP A')))
         print('\r{:>25} {} {}'.format(game['away_name'], line, game['home_name']))
         return True
 
     if not team_home:
-        line = colored_msg(YELLOW,bold('   MISSING LINEUP H  '))
+        line = colored_msg(YELLOW,bold('{:^21}'.format('MISSING LINEUP H')))
         print('\r{:>25} {} {}'.format(game['away_name'], line, game['home_name']))
         return True
 
@@ -265,7 +267,7 @@ def oracle(game):
     except:
         # clear_line()
         logging.exception('backend error')
-        line =  colored_msg(RED, bold('   BACKEND ERROR    '))
+        line =  colored_msg(RED, bold('{:^21}'.format('BACKEND ERROR')))
         print('\r{:>25} {} {}'.format(game['away_name'], line, game['home_name']))
         return
 
