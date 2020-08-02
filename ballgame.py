@@ -2,21 +2,9 @@
 
 * Setup a package so that the library is transparantly available
 
-* Architecturally, 
-
-
-* From the c++-side, return 2D array with the unormalized joint
-  distribution over runs then do all postprocessing on python side.
 * Make a pair of Team objects the data bridge between python and c++
   * Team objects are something like a collection of Player objects
-  * Thus the api is Team, Player, (double**) run_simulation().
-  * The maximum score is a built-in constant that can be queried to get
-    the size of the result matrix. This matrix does not have underflow
-    or overflow bins; invalid inputs are discarded. The idea is that
-    we can choose a size that's very small like 256, i.e. it requires
-    barely any memory but the odds of score reaching that high are
-    practically zero.
-  * Matrix.at(i,j) => P(A = i, H = j)
+  * Thus the api is Team, Player, run_simulation.
 
 * Relegate threading to python side. Since the simulation must return
   the unormalized distributions over run, the results are trivialy
@@ -24,15 +12,17 @@
   point could be a python function altogether (e.g. keras model), and
   be transparantly multi-threaded (modulo GIL).
 
+* Validation studies
 
 * Have Player objects be references to a stats database which can be
   queried.
-* Which allows validation studies!
 
 """
 
 
 import ctypes
+
+import numpy as np
 
 libballgame = ctypes.cdll.LoadLibrary('./libballgame.so')
 
@@ -53,10 +43,24 @@ def pitcher(name, H, BB, SO, BF):
 
 # TODO better handling of code path
 def run_simulations(away_path, home_path, sims_per_thread=100000, thread_n=2):
-    libballgame.run_simulations.restype = ctypes.c_double
-    return libballgame.run_simulations(
+
+    buffer_type = ctypes.c_int * libballgame.buffer_size()
+    data_buffer = buffer_type()
+
+    libballgame.run_simulations(
+        data_buffer,
         ctypes.c_char_p(away_path.encode('utf-8')),
         ctypes.c_char_p(home_path.encode('utf-8')),
         ctypes.c_int(sims_per_thread),
         ctypes.c_int(thread_n)
     )
+
+    data = np.empty((libballgame.max_score(), libballgame.max_score()))
+    for i in np.arange(data.shape[0]):
+        for j in np.arange(data.shape[1]):
+            data[i, j] = data_buffer[i * libballgame.max_score() + j]
+
+    home_win_total = np.sum(data[np.triu_indices(libballgame.max_score())])
+    total_count = np.sum(data)
+
+    return home_win_total / total_count

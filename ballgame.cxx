@@ -32,8 +32,61 @@ struct Batter {
 	double BA;
 };
 
-
+extern "C" {
 int MAXSCORE = 256;
+}
+
+class Hist2D {
+
+	int* m_buffer;
+	bool m_cleanup;
+
+public:
+	Hist2D() {
+		m_buffer = new int[MAXSCORE*MAXSCORE];
+		m_cleanup = true;
+		for (int i = 0; i < MAXSCORE*MAXSCORE; i++)
+			m_buffer[i] = 0;
+	}
+
+	~Hist2D() {
+		if (m_cleanup)
+			delete [] m_buffer;
+	}
+
+	Hist2D(int *data_buffer) : m_buffer(data_buffer), m_cleanup(false) {
+		for (int i = 0; i < MAXSCORE*MAXSCORE; i++)
+			m_buffer[i] = 0;
+	}
+
+	int get(int i, int j) { return m_buffer[index(i, j)]; }
+
+	void set(int i, int j, int k) { m_buffer[index(i, j)] = k; }
+
+	void incr(int i, int j) { m_buffer[index(i, j)] += 1; }
+
+	int index(int i, int j) {
+		if (i < 0) i = 0;
+		if (i > MAXSCORE) i = MAXSCORE;
+		if (j < 0) j = 0;
+		if (j > MAXSCORE) j = MAXSCORE;
+		int idx = i * MAXSCORE + j;
+		// std::cout << "hereidx" << idx << std::endl;
+		return idx;
+	}
+
+	void add(const Score &score) {
+		incr(score.away, score.home);
+	}
+
+	void add(Hist2D &other) {
+		for (int i = 0; i < MAXSCORE; i++) {
+			for (int j = 0; j < MAXSCORE; j++)
+				set(i, j, get(i, j) + other.get(i, j));
+		}
+	}
+
+};
 
 class Team {
 public:
@@ -214,84 +267,15 @@ Score play_game(Team &away, Team &home)
 	return score;
 }
 
-typedef std::vector<int> Hist;
 
-void add_inplace(Hist &to, Hist &from)
+int compute_joint_runs_pdf(Hist2D &result, Team &away, Team &home, int sims_n)
 {
-	if (to.size() != from.size()) {
-		std::cerr << "size mismatch\n";
-		return;
-	}
-
-	for (size_t i = 0; i < to.size(); i++)
-		to[i] += from[i];
-}
-
-// TODO gotta use a 2d hist
-std::pair<Hist, Hist> worker(Team &away, Team &home, int nsim)
-{
-	int max = MAXSCORE;
-
-	std::vector<int> h_away(max + 1, 0);
-	std::vector<int> h_home(max + 1, 0);
-
-	for (int i = 0; i < nsim; i++) {
+	for (int i = 0; i < sims_n; i++) {
 		Score sco = play_game(away, home);
-		if (sco.away > max)
-			sco.away = max;
-		h_away[sco.away] += 1;
-		if (sco.home > max)
-			sco.home = max;
-		h_home[sco.home] += 1;
+		result.add(sco);
 	}
 
-	return std::make_pair(h_away, h_home);
-}
-
-// Score most_probable_score_MT(Team &away, Team &home, int sims_per_thread=100000, int thread_n=2)
-double compute_home_win_probability(Team &away, Team &home, int sims_per_thread=100000, int thread_n=2)
-{
-	std::vector<std::future<std::pair<Hist, Hist>>> pool;
-	for (int i = 0; i < thread_n; i++) {
-		pool.emplace_back(std::async(worker, std::ref(away), std::ref(home), sims_per_thread));
-	}
-
-	Hist runs_away(MAXSCORE + 1, 0);
-	Hist runs_home(MAXSCORE + 1, 0);
-	for (auto &fut : pool) {
-		auto pair = fut.get();
-		add_inplace(runs_away, pair.first);
-		add_inplace(runs_home, pair.second);
-	}
-
-	// let's try the home win prob
-	std::vector<double> p_away;
-	double totw = 0;
-	for (int x : runs_away)
-		totw += x;
-	for (int x : runs_away)
-		p_away.push_back(x / totw);
-	std::vector<double> p_home;
-	totw = 0;
-	for (int x : runs_home)
-		totw += x;
-	for (int x : runs_home)
-		p_home.push_back(x / totw);
-
-	std::vector<double> cdf_away;
-	totw = 0;
-	for (double x : p_away) {
-		cdf_away.push_back(totw + x);
-		totw += x;
-	}
-
-	// P(H > A) = sum_r P(H == r) * P(A < r)
-	double hwp = 0;
-	for (size_t i = 1; i < p_home.size(); i++) {
-		hwp += p_home.at(i) * cdf_away.at(i - 1);
-	}
-
-	return hwp;
+	return 0;
 }
 
 
@@ -347,13 +331,18 @@ Score most_probable_score(Team &away, Team &home, int nsim=500000)
 // }
 
 extern "C" {
-double run_simulations(const char *away_path, const char *home_path,
-		       int sims_per_thread, int thread_n)
+	double run_simulations(int *data_buffer, const char *away_path, const char *home_path,
+			       int sims_n)
 {
+	Hist2D results(data_buffer);
 	Team away(away_path);
 	Team home(home_path);
-	double hwp = compute_home_win_probability(away, home, sims_per_thread, thread_n);
-	return hwp;
+
+	compute_joint_runs_pdf(results, away, home, sims_n);
+	return 0;
 }
+
+	size_t max_score() { return MAXSCORE; }
+	size_t buffer_size() { return MAXSCORE * MAXSCORE; }
 }
 
