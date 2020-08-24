@@ -352,9 +352,9 @@ def _main():
 
     if err:
         if not args.log:
-            print(colored_msg(RED, '**** There were errors, run with --log for potential details'))
+            print(colored_msg(TTYColor['red'], '**** There were errors, run with --log for potential details'))
         else:
-            print(colored_msg(RED, '**** There were errors'))
+            print(colored_msg(TTYColor['red'], '**** There were errors'))
         return 1
 
     return 0
