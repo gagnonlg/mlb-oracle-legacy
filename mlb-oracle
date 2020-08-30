@@ -15,6 +15,7 @@
 
 """
 
+# TODO CRTL-C behavior
 
 import argparse
 import datetime
@@ -22,6 +23,7 @@ import logging
 import subprocess
 import sys
 import tempfile
+import traceback
 
 import statsapi
 
@@ -37,6 +39,13 @@ TTYColor = {
     'white': 37,
 }
 
+def set_stderr_color(code):
+    sys.stderr.write("\033[%dm" % code)
+    sys.stderr.flush()
+
+def clear_stderr_color():
+    sys.stderr.write("\033[0m")
+    sys.stderr.flush()
 
 def colored_msg(code, msg):
     return "\033[{}m{}\033[0m".format(code, msg) if code else msg
@@ -262,7 +271,7 @@ def oracle(game):
     if game['status'] == 'Postponed':
         gline.postponed()
         gline.final()
-        return True
+        return 0
 
     gline.fetching()
     gline.update()
@@ -273,71 +282,65 @@ def oracle(game):
         team_away = lineup(game_data, 'away')
         team_home = lineup(game_data, 'home')
     except:
-        logging.exception('Error encountered while fetching lineups')
         gline.frontend_error()
         gline.final()
-        return
+        set_stderr_color(TTYColor['red'])
+        traceback.print_exc()
+        clear_stderr_color()
+        return 1
 
     if (not team_away) and (not team_home):
         gline.missing_lineups()
         gline.final()
-        return True
+        return 0
 
     if not team_away:
         gline.missing_lineup_away()
         gline.final()
-        return True
+        return 0
 
     if not team_home:
         gline.missing_lineup_home()
         gline.final()
-        return True
+        return 0
 
     gline.predicting()
     gline.update()
     try:
         home_win_probability = predict(team_away, team_home)
     except:
-        logging.exception('Error encountered in backend')
         gline.backend_error()
         gline.final()
-        return
+        set_stderr_color(TTYColor['red'])
+        traceback.print_exc()
+        clear_stderr_color()
+        return 1
 
     gline.prediction(home_win_probability)
     gline.final()
 
 
-    return True
+    return 0
 
 
-def _configure_logging(path):
-    if path:
-        logging.basicConfig(
-            filename=path,
-            filemode='a',
-            format='[%(asctime)s %(levelname)s %(process)d/%(module)s.%(funcName)s] %(message)s',
-            level=logging.WARNING
-        )
-    else:
-        logging.basicConfig(
-            filename=path,
-            filemode='a',
-            format='[%(asctime)s %(levelname)s %(process)d/%(module)s.%(funcName)s] %(message)s',
-            level=logging.CRITICAL
-        )
+def _configure_logging():
+    # TODO: change basic level to WARNING
+    # TODO: use INFO and/or DEBUG levels
+    logging.basicConfig(
+        format='[%(asctime)s %(levelname)s %(process)d/%(module)s.%(funcName)s] %(message)s',
+        level=logging.ERROR
+    )
 
 
 def _get_args():
     args = argparse.ArgumentParser()
-    args.add_argument('--log', action='store_true')
-    args.add_argument('-d', '--date', default=datetime.date.today().isoformat())
-    # args.add_argument('-l', '--lineups', action='store_true')
+    args.add_argument('date', nargs='?', default=datetime.date.today().isoformat())
     return args.parse_args()
 
 
 def _main():
     args = _get_args()
-    _configure_logging('/dev/stderr' if args.log else None)
+    _configure_logging()
     logging.info('mlb-oracle version alpha.1')
     date = datetime.date.fromisoformat(args.date)
     logging.info('Predictions for %s', date.isoformat())
@@ -346,18 +349,13 @@ def _main():
     sched = statsapi.schedule(start_date=date.strftime('%m/%d/%Y'))
     logging.debug('Result: %s', sched is not None)
 
-    err = False
+    rc = 0
     for game in sched:
-        err |= not oracle(game)
+        ret = oracle(game)
+        if ret != 0:
+            rc = ret
 
-    if err:
-        if not args.log:
-            print(colored_msg(TTYColor['red'], '**** There were errors, run with --log for potential details'))
-        else:
-            print(colored_msg(TTYColor['red'], '**** There were errors'))
-        return 1
-
-    return 0
+    return rc
 
 if __name__ == '__main__':
     exit(_main())
