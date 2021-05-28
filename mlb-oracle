@@ -199,6 +199,7 @@ def predict(away, home):
         logging.debug('Technical problem!')
         return None
 
+    # TODO hide behing -d --dump switch
     dump_lineup(away, tmp_away.name)
     dump_lineup(home, tmp_home.name)
 
@@ -218,6 +219,7 @@ def lineup(game_data, key):
         return None
 
     startp = game_data[key + 'Pitchers'][1]
+    logging.info('Pitcher ID: {}'.format(startp['personId']))
     startpd = statsapi.player_stat_data(
         startp['personId'],
         group='pitching',
@@ -240,6 +242,7 @@ def lineup(game_data, key):
         return None
 
     for batter in game_data[key + 'Batters'][1:]:
+        logging.info('Batter ID: {}'.format(batter['personId']))
         if batter['namefield'][0].isdigit():
             try:
                 btrd = statsapi.player_stat_data(
@@ -323,24 +326,26 @@ def oracle(game):
     return 0
 
 
-def _configure_logging():
+def _configure_logging(verbose=False):
     # TODO: change basic level to WARNING
     # TODO: use INFO and/or DEBUG levels
     logging.basicConfig(
         format='[%(asctime)s %(levelname)s %(process)d/%(module)s.%(funcName)s] %(message)s',
-        level=logging.ERROR
+        level=logging.ERROR if not verbose else logging.INFO
+        # level=logging.DEBUG if not verbose else logging.INFO
     )
 
 
 def _get_args():
     args = argparse.ArgumentParser()
     args.add_argument('date', nargs='?', default=datetime.date.today().isoformat())
+    args.add_argument('-v', '--verbose', action='store_true')
     return args.parse_args()
 
 
 def _main():
     args = _get_args()
-    _configure_logging()
+    _configure_logging(args.verbose)
     logging.info('mlb-oracle version alpha.1')
     date = datetime.date.fromisoformat(args.date)
     logging.info('Predictions for %s', date.isoformat())

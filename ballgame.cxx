@@ -174,7 +174,7 @@ private:
 std::vector<double> compute_prob_dist(Pitcher &pitcher, Batter &batter)
 {
 	double prob_hit_p = pitcher.H / pitcher.BF;
-	double prob_hit_b = batter.BA;
+	double prob_hit_b = batter.BA; // TODO should be H / P-A
 	double prob_hit = std::sqrt(prob_hit_p * prob_hit_b);
 
 	double prob_walk = pitcher.BB / pitcher.BF;
@@ -191,7 +191,7 @@ std::vector<double> compute_prob_dist(Pitcher &pitcher, Batter &batter)
 	double prob_1B = 1 - prob_2B - prob_3B - prob_HR;
 
 	double prob_strikeout_p = pitcher.SO / pitcher.BF;
-	double prob_strikeout_b = batter.SO / batter.AB;
+	double prob_strikeout_b = batter.SO / batter.AB; // TODO AB -> PA
 	double prob_strikeout = std::sqrt(prob_strikeout_p * prob_strikeout_b);
 	double prob_flyout = 0.5 * (1 - prob_strikeout);
 	double prob_tagout = prob_flyout;
